@@ -23,6 +23,17 @@
 namespace at {
 namespace native {
 
+namespace {
+torch::List<c10::optional<Tensor>> toListOfOptionalTensors(ArrayRef<Tensor> list) {
+  torch::List<c10::optional<Tensor>> result;
+  result.reserve(list.size());
+  for (const Tensor& a : list) {
+    result.push_back(a);
+  }
+  return result;
+}
+}
+
 DEFINE_DISPATCH(addr_stub);
 
 // Helper function for det methods.
@@ -73,7 +84,8 @@ Tensor logdet(const Tensor& self) {
   // U is singular when U(i, i) = 0 for some i in [1, self.size(-1)].
   Tensor logdet_vals = diag_U.abs_().log_().sum(-1);
   if (self.dim() > 2) {
-    logdet_vals.index_put_((det_sign < 0).nonzero_numpy(), at::full({}, NAN, self.options()));
+    auto indices = toListOfOptionalTensors((det_sign < 0).nonzero_numpy());
+    logdet_vals.index_put_(std::move(indices), at::full({}, NAN, self.options()));
   } else if (det_sign.item<double>() < 0) {
     logdet_vals.fill_(NAN);
   }
@@ -328,7 +340,7 @@ Tensor& inner_out(Tensor& out, const Tensor& self, const Tensor& other) {
       self.sizes(),
       " and ",
       other.sizes());
-  
+
   at::tensordot_out(out, self, other, -1, -1);
   return out;
 }
